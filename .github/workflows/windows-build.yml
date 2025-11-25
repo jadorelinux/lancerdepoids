@@ -1,8 +1,8 @@
-name: Build Windows EXE (CMake + MSVC final)
+name: Build Windows EXE (CMake + MSVC)
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -13,60 +13,50 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Install Python
+      - name: Install Python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install numpy matplotlib
 
       - name: Clone matplotlib-cpp
         run: git clone https://github.com/lava/matplotlib-cpp.git
 
-      - name: Add minimal CMakeLists.txt if missing
-        shell: pwsh
+      - name: Ensure CMakeLists.txt exists
         run: |
-          if (!(Test-Path "CMakeLists.txt")) {
-            @"
-cmake_minimum_required(VERSION 3.14)
-project(LancerDePoids LANGUAGES CXX)
-find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
-include_directories(${Python3_INCLUDE_DIRS})
-include_directories(${Python3_NumPy_INCLUDE_DIRS})
-include_directories(matplotlib-cpp)
-add_executable(LancerDePoids LancerDePoids.cpp)
-target_link_libraries(LancerDePoids ${Python3_LIBRARIES})
-set_target_properties(LancerDePoids PROPERTIES OUTPUT_NAME "LancerDePoids")
-"@ | Out-File -Encoding utf8 CMakeLists.txt
-          }
+          if not exist CMakeLists.txt (
+            echo cmake_minimum_required(VERSION 3.14) > CMakeLists.txt
+            echo project(LancerDePoids LANGUAGES CXX) >> CMakeLists.txt
+            echo find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED) >> CMakeLists.txt
+            echo include_directories($${Python3_INCLUDE_DIRS}) >> CMakeLists.txt
+            echo include_directories($${Python3_NumPy_INCLUDE_DIRS}) >> CMakeLists.txt
+            echo include_directories(matplotlib-cpp) >> CMakeLists.txt
+            echo add_executable(LancerDePoids LancerDePoids.cpp) >> CMakeLists.txt
+            echo target_link_libraries(LancerDePoids $${Python3_LIBRARIES}) >> CMakeLists.txt
+          )
 
       - name: Configure and Build with CMake
-        shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
           mkdir build
           cd build
 
-          $pyExe = python -c "import sys;print(sys.executable)"
-          $pyInc = python -c "import sysconfig;print(sysconfig.get_paths()['include'])"
-          $npInc = python -c "import numpy;print(numpy.get_include())"
+          for /f "usebackq delims=" %%i in (`python -c "import sys; print(sys.executable)"`) do set PY_EXE=%%i
+          for /f "usebackq delims=" %%i in (`python -c "import sysconfig; print(sysconfig.get_paths()['include'])"`) do set PY_INC=%%i
+          for /f "usebackq delims=" %%i in (`python -c "import numpy; print(numpy.get_include())"`) do set NP_INC=%%i
 
-          # Configuration du projet
-          cmake .. -G "Visual Studio 17 2022" -A x64 `
-            -DPython3_EXECUTABLE="$pyExe" `
-            -DPython3_INCLUDE_DIR="$pyInc" `
-            -DPython3_NumPy_INCLUDE_DIR="$npInc"
+          cmake .. -G "Visual Studio 17 2022" -A x64 ^
+            -DPython3_EXECUTABLE="%PY_EXE%" ^
+            -DPython3_INCLUDE_DIR="%PY_INC%" ^
+            -DPython3_NumPy_INCLUDE_DIR="%NP_INC%"
 
-          # Compilation avec MSVC via CMake
           cmake --build . --config Release
 
-          # Copie l’exécutable final à la racine
-          if (Test-Path ".\Release\LancerDePoids.exe") {
-            Copy-Item ".\Release\LancerDePoids.exe" "..\LancerDePoids.exe"
-          }
-
+          if exist Release\LancerDePoids.exe (
+            copy Release\LancerDePoids.exe ..\LancerDePoids.exe
+          )
           cd ..
 
       - name: Upload executable artifact

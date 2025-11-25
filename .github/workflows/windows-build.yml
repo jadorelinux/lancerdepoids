@@ -18,12 +18,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install Python dependencies
         run: |
           python -m pip install numpy matplotlib
 
       - name: Clone matplotlib-cpp
         run: git clone https://github.com/lava/matplotlib-cpp.git
+
+      - name: Fix matplotlib-cpp redefinitions
+        shell: bash
+        run: |
+          sed -i.bak '/long long> { const static NPY_TYPES type = NPY_INT64; };/d' matplotlib-cpp/matplotlibcpp.h
+          sed -i.bak '/unsigned long long> { const static NPY_TYPES type = NPY_UINT64; };/d' matplotlib-cpp/matplotlibcpp.h
 
       - name: Build executable
         shell: bash
@@ -36,7 +42,7 @@ jobs:
           echo "Python lib path: $PY_LIB"
           echo "Python version ID: $PY_VER"
 
-          g++ LancerDePoids.cpp -std=c++17 \
+          g++ LancerDePoids.cpp -std=c++17 -Wno-deprecated-declarations \
           -I./matplotlib-cpp \
           -I"$(python -c 'import numpy; print(numpy.get_include())')" \
           -I"$PY_INC" -L"$PY_LIB" -lpython$PY_VER \

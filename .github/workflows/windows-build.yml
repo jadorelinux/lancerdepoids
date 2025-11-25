@@ -35,17 +35,15 @@ jobs:
         shell: bash
         run: |
           PY_INC=$(python -c "import sysconfig; print(sysconfig.get_paths()['include'])")
-          PY_LIB=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
           PY_VER=$(python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')")
 
           echo "Python include path: $PY_INC"
-          echo "Python lib path: $PY_LIB"
           echo "Python version ID: $PY_VER"
 
           g++ LancerDePoids.cpp -std=c++17 -Wno-deprecated-declarations \
           -I./matplotlib-cpp \
           -I"$(python -c 'import numpy; print(numpy.get_include())')" \
-          -I"$PY_INC" -L"$PY_LIB" -lpython$PY_VER \
+          -I"$PY_INC" \
           -o LancerDePoids.exe
 
       - name: Upload executable

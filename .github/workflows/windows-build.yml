@@ -1,0 +1,40 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python packages
+        run: |
+          python -m pip install numpy matplotlib
+
+      - name: Clone matplotlib-cpp
+        run: git clone https://github.com/lava/matplotlib-cpp.git
+
+      - name: Build executable
+        shell: bash
+        run: |
+          g++ LancerDePoids.cpp -std=c++17 -I./matplotlib-cpp \
+          -I"$(python -c 'import numpy; print(numpy.get_include())')" \
+          $(python -m sysconfig --cflags) $(python -m sysconfig --ldflags) \
+          -o LancerDePoids.exe
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: LancerDePoids.exe
+          path: LancerDePoids.exe

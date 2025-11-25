@@ -34,22 +34,43 @@ jobs:
       - name: Build with MSVC
         shell: pwsh
         run: |
-          # Active l'environnement MSVC (permet d'utiliser 'cl.exe')
-          Invoke-Expression "& '${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat'"
+          $ErrorActionPreference = "Stop"
+
+          # Cherche automatiquement le script vcvars64.bat
+          $roots = @(
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          )
+
+          $vcvars = $roots | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $vcvars) {
+            Write-Error "❌ Impossible de trouver vcvars64.bat !"
+            exit 1
+          }
+
+          Write-Host "✅ Using vcvars at: $vcvars"
+          cmd /c "`"$vcvars`" && cl /?" > nul"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "❌ Échec lors du chargement de l'environnement MSVC."
+            exit 1
+          }
 
           $inc = python -c "import sysconfig; print(sysconfig.get_paths()['include'])"
           $lib = python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+          $numpy_inc = python -c "import numpy; print(numpy.get_include())"
           $ver = python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')"
 
           echo "Python include = $inc"
           echo "Python lib     = $lib"
+          echo "NumPy include  = $numpy_inc"
 
-          cl /EHsc /MD /std:c++17 LancerDePoids.cpp ^
-            /I"matplotlib-cpp" ^
-            /I"$inc" ^
-            /I"$(python -c 'import numpy;print(__import__(\"numpy\").get_include())')" ^
-            /link /LIBPATH:"$lib" python$ver.lib
-
+          # Compilation via cmd /c pour hériter de l'environnement vcvars64
+          cmd /c "`"$vcvars`" && cl /EHsc /MD /std:c++17 LancerDePoids.cpp ^
+            /I`"matplotlib-cpp`" /I`"$inc`" /I`"$numpy_inc`" ^
+            /link /LIBPATH:`"$lib`" python$ver.lib"
+          
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:

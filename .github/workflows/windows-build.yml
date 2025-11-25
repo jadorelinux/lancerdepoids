@@ -2,7 +2,7 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -31,31 +31,22 @@ jobs:
           sed -i.bak '/long long> { const static NPY_TYPES type = NPY_INT64; };/d' matplotlib-cpp/matplotlibcpp.h
           sed -i.bak '/unsigned long long> { const static NPY_TYPES type = NPY_UINT64; };/d' matplotlib-cpp/matplotlibcpp.h
 
-      - name: Build with MSVC
+      - name: Build Windows EXE (MSVC with fallback)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Cherche automatiquement le script vcvars64.bat
-          $roots = @(
+          # Cherche vcvars64.bat dans tous les Visual Studio installés
+          $vcRoots = @(
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
             "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
-            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
           )
 
-          $vcvars = $roots | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $vcvars) {
-            Write-Error "❌ Impossible de trouver vcvars64.bat !"
-            exit 1
-          }
-
-          Write-Host "✅ Using vcvars at: $vcvars"
-          cmd /c "`"$vcvars`" && cl /?" > nul"
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "❌ Échec lors du chargement de l'environnement MSVC."
-            exit 1
-          }
+          $vcvars = $vcRoots | Where-Object { Test-Path $_ } | Select-Object -First 1
 
           $inc = python -c "import sysconfig; print(sysconfig.get_paths()['include'])"
           $lib = python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
@@ -66,10 +57,30 @@ jobs:
           echo "Python lib     = $lib"
           echo "NumPy include  = $numpy_inc"
 
-          # Compilation via cmd /c pour hériter de l'environnement vcvars64
-          cmd /c "`"$vcvars`" && cl /EHsc /MD /std:c++17 LancerDePoids.cpp ^
-            /I`"matplotlib-cpp`" /I`"$inc`" /I`"$numpy_inc`" ^
-            /link /LIBPATH:`"$lib`" python$ver.lib"
+          if ($vcvars) {
+            Write-Host "✅ MSVC detected at: $vcvars"
+            cmd /c "`"$vcvars`" && cl /EHsc /MD /std:c++17 LancerDePoids.cpp ^
+              /I`"matplotlib-cpp`" /I`"$inc`" /I`"$numpy_inc`" ^
+              /link /LIBPATH:`"$lib`" python$ver.lib"
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Warning "⚠️ MSVC compilation failed, switching to MinGW..."
+          } else {
+            Write-Warning "⚠️ No vcvars64.bat found, switching to MinGW..."
+          }
+
+          # === Fallback MinGW ===
+          Write-Host "🔧 Installing MinGW..."
+          choco install mingw --no-progress -y
+          refreshenv
+
+          $gcc = (Get-Command g++).Source
+          Write-Host "✅ Using MinGW compiler at: $gcc"
+
+          g++ LancerDePoids.cpp -std=c++17 -Wno-deprecated-declarations `
+            -I"./matplotlib-cpp" `
+            -I"$inc" `
+            -I"$numpy_inc" `
+            -o LancerDePoids.exe
           
       - name: Upload executable
         uses: actions/upload-artifact@v4

@@ -31,20 +31,19 @@ jobs:
           sed -i.bak '/long long> { const static NPY_TYPES type = NPY_INT64; };/d' matplotlib-cpp/matplotlibcpp.h
           sed -i.bak '/unsigned long long> { const static NPY_TYPES type = NPY_UINT64; };/d' matplotlib-cpp/matplotlibcpp.h
 
-      - name: Build executable
-        shell: bash
+- name: Build with MSVC
+        shell: pwsh
         run: |
-          PY_INC=$(python -c "import sysconfig; print(sysconfig.get_paths()['include'])")
-          PY_VER=$(python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')")
+          $py = (Get-Command python).Source
+          $inc = python -c "import sysconfig;print(sysconfig.get_paths()['include'])"
+          $lib = python -c "import sysconfig;print(sysconfig.get_config_var('LIBDIR'))"
+          $ver = python -c "import sys;print(f'{sys.version_info.major}{sys.version_info.minor}')"
+          echo "Python include = $inc"
+          echo "Python lib     = $lib"
 
-          echo "Python include path: $PY_INC"
-          echo "Python version ID: $PY_VER"
-
-          g++ LancerDePoids.cpp -std=c++17 -Wno-deprecated-declarations \
-          -I./matplotlib-cpp \
-          -I"$(python -c 'import numpy; print(numpy.get_include())')" \
-          -I"$PY_INC" \
-          -o LancerDePoids.exe
+          cl /EHsc /MD /std:c++17 LancerDePoids.cpp ^
+             /I"matplotlib-cpp" /I"$inc" /I"$(python -c 'import numpy;print(__import__(\"numpy\").get_include())')" ^
+             /link /LIBPATH:"$lib" python$ver.lib
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
